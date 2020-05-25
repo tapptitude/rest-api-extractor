@@ -1,0 +1,10 @@
+node_modules
+.idea
+.vscode
+.env
+npm-debug.log
+.DS_Store
+build
+
+!.idea/runConfigurations
+

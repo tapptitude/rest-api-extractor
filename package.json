@@ -1,0 +1,25 @@
+{
+  "name": "rest-api-extractor",
+  "version": "1.0.0",
+  "description": "Extract http api calls from express for project written in typescript.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tapptitude/rest-api-extractor.git"
+  },
+  "author": "alextud@gmail.com",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tapptitude/rest-api-extractor/issues"
+  },
+  "homepage": "https://github.com/tapptitude/rest-api-extractor#readme",
+  "dependencies": {
+    "@phenomnomnominal/tsquery": "^4.1.0",
+    "@types/node": "^14.0.5",
+    "path": "^0.12.7",
+    "typescript": "^3.9.3"
+  }
+}
