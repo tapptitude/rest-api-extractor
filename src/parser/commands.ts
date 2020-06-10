@@ -4,19 +4,15 @@ import chalk from 'chalk';
 
 export class Commands {
   public static printEndpoints(endpoints: Endpoint[]) {
-    const paths = endpoints.map((item) => {
-      let path = item.type + ' ' + item.path;
-      const queryKeys = Object.keys(item.query);
-      if (queryKeys.length) {
-        path += ' query: ' + queryKeys;
-      }
-      const bodyKeys = Object.keys(item.body);
-      if (bodyKeys.length) {
-        path += ' body: ' + bodyKeys;
-      }
-      return path;
+    endpoints.forEach((endpoint) => {
+      console.log(chalk.cyan('➜  ') + chalk.bold.cyan(endpoint.path));
+      Object.keys(endpoint.body).length > 0 &&
+        console.log('    ' + chalk.bold.yellow('body: ') + Object.keys(endpoint.body).join(', '));
+      Object.keys(endpoint.query).length > 0 &&
+        console.log('    ' + chalk.bold.yellow('query: ') + Object.keys(endpoint.query).join(', '));
+      Object.keys(endpoint.headers).length > 0 &&
+        console.log('    ' + chalk.bold.yellow('headers: ') + Object.keys(endpoint.headers).join(', '));
     });
-    console.log(paths);
   }
 
   public static generatePostmanCollection(collectionName: string, endpoints: Endpoint[]) {
