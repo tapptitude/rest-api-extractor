@@ -8,3 +8,4 @@ build
 
 !.idea/runConfigurations
 
+*.postman_collection.json
