@@ -1,0 +1,4 @@
+{
+  "authorization": "Bearer {{authToken}}",
+  "content-type": "application/json"
+}
