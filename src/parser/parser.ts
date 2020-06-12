@@ -1,6 +1,7 @@
-import ts from 'typescript';
+import ts, { Type } from 'typescript';
 import { tsquery } from '@phenomnomnominal/tsquery';
 import { Endpoint } from '../models/endpoint';
+import { FieldType, ObjectParameters } from '../models/type';
 
 const getDefaultEndpoint: () => Endpoint = () => ({
   path: '',
@@ -8,7 +9,7 @@ const getDefaultEndpoint: () => Endpoint = () => ({
   body: {},
   query: {},
   headers: {
-    'content-type': 'string',
+    'content-type': { type: 'string' },
   },
 });
 
@@ -25,8 +26,58 @@ export class Parser {
     this.printer = ts.createPrinter();
   }
 
+  private getMemberTypeName(memberType: ts.Type, nodeLocation: ts.Node): FieldType | null {
+    // PRIMITIVE: memberType.intrinsicName
+    if ((memberType as any).intrinsicName) {
+      return {
+        type: (memberType as any).intrinsicName,
+      };
+    }
+
+    if (memberType.symbol) {
+      let compoundType: { [key: string]: any } = {};
+
+      if (memberType.symbol.name == 'Array' && (<ts.TypeReference>memberType).typeArguments) {
+        // ARRAY
+        let elementType = (<ts.TypeReference>memberType).typeArguments![0];
+        return {
+          type: 'array',
+          items: this.getMemberTypeName(elementType, nodeLocation),
+        };
+      } else if (memberType.symbol.exports) {
+        // ENUM: memberType.symbol.exports
+        memberType.symbol.exports.forEach((value, key) => {
+          const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
+          compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation);
+        });
+      } else if (memberType.symbol.members) {
+        // OBJECT: memberType.symbol.members
+        memberType.symbol.members.forEach((value, key) => {
+          const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
+          compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation);
+        });
+      } else if ((memberType.symbol.valueDeclaration as any)?.initializer) {
+        // ENUM VALUE
+        const initializerToken = (memberType.symbol.valueDeclaration as any)?.initializer;
+        if (initializerToken.text) {
+          return {
+            type: 'string',
+            value: initializerToken.text,
+          };
+        }
+      }
+
+      // TODO: 1) Treat case where type is something like "a" | "b" | "c"
+      // TODO: 2) Treat case where type is optional (user?: User)
+
+      return { type: 'object', properties: compoundType };
+    }
+
+    return null;
+  }
+
   private extractParams(variableName: string, propertyName: string, body: ts.Node) {
-    const params: { [key: string]: any } = {};
+    const params: { [key: string]: FieldType } = {};
 
     //EX:        const { email, password } = req.body;
     const propertyAccess = tsquery.parse(
@@ -40,17 +91,21 @@ export class Parser {
       //EX:        const { email, password } = req.body;
       const leftFields = node.parent.parent._children[0].elements?.map((item) => item.getText());
       for (const field of leftFields || []) {
-        params[field] = 'string';
+        params[field] = {
+          type: 'string',
+        };
       }
 
       //EX:        req.body.email
-      // @ts-ignore
-      const children = node.parent.parent._children;
-      // @ts-ignore
+      const children = (node.parent.parent as any)._children;
       const rightFieldName =
         children.length > 2 && children[2].kind == ts.SyntaxKind.Identifier ? children[2].getText() : null;
+      const typeSymbol =
+        children[0].elements?.length > 0
+          ? (this.checker.getTypeAtLocation(children[0].elements[0]) as any).intrinsicName
+          : null;
       if (rightFieldName) {
-        params[rightFieldName] = 'string';
+        params[rightFieldName] = { type: typeSymbol || 'string' };
       }
       // console.log(node);
     }
@@ -107,23 +162,45 @@ export class Parser {
           // Set method name for reference (e.g. login, register, changePasswordByEmailToken)
           newEndpoint.methodName = (declaration.parent as any)?.name?.escapedText;
 
-          const requestName = (declaration.parameters[0].name as ts.Identifier).escapedText;
-          const responseName = (declaration.parameters[1].name as ts.Identifier).escapedText;
-          const returnType = this.checker.getReturnTypeOfSignature(signature!);
+          let bodyParams: ObjectParameters = {};
+          let queryParams: ObjectParameters = {};
+          let headerParams: ObjectParameters = {};
+
+          const requestNode = declaration.parameters[0];
+          const requestName = (requestNode.name as ts.Identifier).escapedText;
+          const requestType: Type = this.checker.getTypeAtLocation(requestNode);
+          const typeArgs = (requestType as any).typeArguments;
+          if (typeArgs && typeArgs.length >= 3) {
+            const bodyType = typeArgs[2].symbol?.members;
+            if (bodyType) {
+              for (const member of bodyType) {
+                const key = member[0];
+                const symbol = member[1];
+                const symbolType: any = this.checker.getTypeOfSymbolAtLocation(symbol, requestNode);
+                bodyParams[key] = this.getMemberTypeName(symbolType, requestNode);
+              }
+            }
+          }
+
+          // const responseName = (declaration.parameters[1].name as ts.Identifier).escapedText;
+          // const returnType = this.checker.getReturnTypeOfSignature(signature!);
           // console.log(declaration.parameters);
+
           const arrowF = declaration as ts.ArrowFunction;
 
-          const bodyParams = this.extractParams(requestName.toString(), 'body', arrowF.body);
+          if (Object.keys(bodyParams).length == 0) {
+            bodyParams = this.extractParams(requestName.toString(), 'body', arrowF.body);
+          }
           for (const key in bodyParams) {
             newEndpoint.body[key] = bodyParams[key];
           }
 
-          const queryParams = this.extractParams(requestName.toString(), 'query', arrowF.body);
+          queryParams = this.extractParams(requestName.toString(), 'query', arrowF.body);
           for (const key in queryParams) {
             newEndpoint.query[key] = bodyParams[key];
           }
 
-          const headerParams = this.extractParams(requestName.toString(), 'headers', arrowF.body);
+          headerParams = this.extractParams(requestName.toString(), 'headers', arrowF.body);
           for (const key in headerParams) {
             newEndpoint.headers[key] = headerParams[key];
           }

@@ -1,11 +1,12 @@
 import ts from 'typescript';
+import { ObjectParameters } from './type';
 
 export interface Endpoint {
   type: string;
   path: string;
-  query: { [key: string]: any };
-  body: { [key: string]: any };
-  headers: { [key: string]: any };
+  query: ObjectParameters;
+  body: ObjectParameters;
+  headers: ObjectParameters;
   methodName?: string;
   jsdoc?: {
     [key: string]: string;
