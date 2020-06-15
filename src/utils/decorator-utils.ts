@@ -1,6 +1,5 @@
 import { Endpoint } from '../models/endpoint';
 import fs from 'fs';
-import { pathToFileURL } from 'url';
 import path from 'path';
 
 export class DecoratorUtils {
