@@ -142,7 +142,10 @@ export class Parser {
 
       for (let i = 1; i < expresion.arguments.length; i++) {
         const toExpandNode = expresion.arguments[i];
-        // console.log(path, toExpandNode.getText()); // print endpoint and function name
+        console.log(path, toExpandNode.getText()); // print endpoint and function name
+        if (toExpandNode.getText() == "parseQueryParams") {
+          console.log('test')
+        }
 
         let symbol = this.checker.getSymbolAtLocation(toExpandNode);
         if (newEndpoint.type && symbol) {
