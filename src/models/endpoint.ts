@@ -7,6 +7,7 @@ export interface Endpoint {
   query: ObjectParameters;
   body: ObjectParameters;
   headers: ObjectParameters;
+  response: ObjectParameters;
   methodName?: string;
   jsdoc?: {
     [key: string]: string;

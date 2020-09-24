@@ -1,4 +1,4 @@
-import ts, { Type } from 'typescript';
+import ts, {BindingElement, Type} from 'typescript';
 import { tsquery } from '@phenomnomnominal/tsquery';
 import { Endpoint } from '../models/endpoint';
 import { FieldType, ObjectParameters } from '../models/type';
@@ -8,6 +8,7 @@ const getDefaultEndpoint: () => Endpoint = () => ({
   type: '',
   body: {},
   query: {},
+  response: {},
   headers: {
     'content-type': { type: 'string' },
   },
@@ -50,6 +51,7 @@ export class Parser {
           const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
           compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation);
         });
+        return { type: 'enum', properties: compoundType };
       } else if (memberType.symbol.members) {
         // OBJECT: memberType.symbol.members
         memberType.symbol.members.forEach((value, key) => {
@@ -86,27 +88,31 @@ export class Parser {
     let propertyAccessNodes = tsquery.match(body, propertyAccess, {
       visitAllChildren: true,
     });
+
     for (const node of propertyAccessNodes) {
-      // @ts-ignore
+
       //EX:        const { email, password } = req.body;
-      const leftFields = node.parent.parent._children[0].elements?.map((item) => item.getText());
-      for (const field of leftFields || []) {
-        params[field] = {
-          type: 'string',
+      const children = node.parent.parent.getChildren();
+      let leftBinding = children[0] as ts.BindingPattern;
+      for (const leftField of leftBinding.elements || []) {
+        let fieldName = leftField.getText()
+        // let typeSymbol = this.checker.typeToString(this.checker.getTypeAtLocation(leftField))
+        let typeSymbol = this.getMemberTypeName(this.checker.getTypeAtLocation(leftField), leftField);
+        params[fieldName] = {
+          type: typeSymbol?.type || 'string',
+          ...typeSymbol
         };
       }
 
       //EX:        req.body.email
-      const children = (node.parent.parent as any)._children;
-      const rightFieldName =
-        children.length > 2 && children[2].kind == ts.SyntaxKind.Identifier ? children[2].getText() : null;
-      const typeSymbol =
-        children[0].elements?.length > 0
-          ? (this.checker.getTypeAtLocation(children[0].elements[0]) as any).intrinsicName
-          : null;
-      if (rightFieldName) {
-        params[rightFieldName] = { type: typeSymbol || 'string' };
+      const rightField = children.length > 2 && children[2].kind == ts.SyntaxKind.Identifier ? children[2] : null;
+      if (rightField) {
+        const rightFieldName = rightField.getText()
+        // const typeSymbol = this.checker.typeToString(this.checker.getTypeAtLocation(rightField))
+        let typeSymbol = this.getMemberTypeName(this.checker.getTypeAtLocation(rightField), rightField);
+        params[rightFieldName] = { type: typeSymbol?.type || 'string', ...typeSymbol };
       }
+
       // console.log(node);
     }
 
@@ -143,7 +149,7 @@ export class Parser {
       for (let i = 1; i < expresion.arguments.length; i++) {
         const toExpandNode = expresion.arguments[i];
         console.log(path, toExpandNode.getText()); // print endpoint and function name
-        if (toExpandNode.getText() == "parseQueryParams") {
+        if (toExpandNode.getText() == "userController.updateCurrentUser") {
           console.log('test')
         }
 
@@ -168,7 +174,9 @@ export class Parser {
           let bodyParams: ObjectParameters = {};
           let queryParams: ObjectParameters = {};
           let headerParams: ObjectParameters = {};
+          let responseParams: ObjectParameters = {};
 
+          // parse request interface parameters
           const requestNode = declaration.parameters[0];
           const requestName = (requestNode.name as ts.Identifier).escapedText;
           const requestType: Type = this.checker.getTypeAtLocation(requestNode);
@@ -179,9 +187,27 @@ export class Parser {
               for (const member of bodyType) {
                 const key = member[0];
                 const symbol = member[1];
+                let isOptional = this.checker.isOptionalParameter(symbol.declarations[0]);
+                let fieldName = key + (isOptional ? '?' : '');
                 const symbolType: any = this.checker.getTypeOfSymbolAtLocation(symbol, requestNode);
-                bodyParams[key] = this.getMemberTypeName(symbolType, requestNode);
+                bodyParams[fieldName] = this.getMemberTypeName(symbolType, requestNode);
               }
+            }
+          }
+
+          // parse response parameters
+          const responseNode = declaration.parameters[1];
+          const responseType: Type = this.checker.getTypeAtLocation(responseNode);
+          const responseTypeArgs = (responseType as any).typeArguments;
+          if (responseTypeArgs && responseTypeArgs.length == 1) {
+            const response = responseTypeArgs[0].symbol?.members;
+              for (const member of response || []) {
+                const key = member[0];
+                const symbol = member[1];
+                let isOptional = this.checker.isOptionalParameter(symbol.declarations[0]);
+                let fieldName = key + (isOptional ? '?' : '');
+                const symbolType: any = this.checker.getTypeOfSymbolAtLocation(symbol, responseNode);
+                responseParams[fieldName] = {type: this.checker.typeToString(symbolType)};
             }
           }
 
@@ -196,6 +222,10 @@ export class Parser {
           }
           for (const key in bodyParams) {
             newEndpoint.body[key] = bodyParams[key];
+          }
+
+          for (const key in responseParams) {
+            newEndpoint.response[key] = responseParams[key];
           }
 
           queryParams = this.extractParams(requestName.toString(), 'query', arrowF.body);

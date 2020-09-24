@@ -49,6 +49,14 @@ export class TextUtils {
       });
       const endStr = `}${isArray ? '[]' : ''}`;
       console.log(`${padding}${chalk.yellow(endStr)}`);
+    } else if (typeObject.type === 'enum') {
+      // Enum type
+      let type = Object.entries(typeObject.properties!)[0][1].type;
+      let items = ' in [ ' + Object.entries(typeObject.properties!).map(([k, v]) => '"' + v.value + '"' ).join(' | ') + ' ]'
+      console.log(`${padding}${key}: ${chalk.yellow(type)}${items}`);
+
+      // const endStr = `}${isArray ? '[]' : ''}`;
+      // console.log(`${padding}${chalk.yellow(endStr)}`);
     } else if (typeObject.type === 'array') {
       // Array type
       TextUtils.printFieldType(key, typeObject.items!, padding, true);

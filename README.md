@@ -72,3 +72,8 @@ Feel free to Fork, submit Pull Requests or send us your feedback and suggestions
 ## License 
 
 Rest-api-extractor is available under the Apache License Version 2.0. See the LICENSE file for more info.
+
+## Tools used:
+https://tsquery-playground.firebaseapp.com
+https://ts-ast-viewer.com/
+https://ts-morph.com/details/identifiers

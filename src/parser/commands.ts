@@ -12,6 +12,8 @@ export class Commands {
       Object.entries(endpoint.body).forEach(([k, v]) => TextUtils.printFieldType(k, v, ' '.repeat(8)));
       console.log('    ' + chalk.bold.yellow('query: ') + Object.keys(endpoint.query).join(', '));
       console.log('    ' + chalk.bold.yellow('headers: ') + Object.keys(endpoint.headers).join(', '));
+      console.log('    ' + chalk.bold.yellow('response: '));
+      Object.entries(endpoint.response).forEach(([k, v]) => TextUtils.printFieldType(k, v, ' '.repeat(8)));
     });
   }
 
