@@ -1,4 +1,4 @@
-import {FieldType, SingleTypeKey} from '../models/type';
+import {FieldType} from '../models/type';
 import chalk from 'chalk';
 
 export class TextUtils {

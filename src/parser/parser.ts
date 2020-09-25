@@ -127,7 +127,9 @@ export class Parser {
     if (typeArgs && typeArgs.length > position) {
       let typeArgument = typeArgs[position];
       if (typeArgument.symbol?.name === 'Array') {
-        params = {type: this.getMemberTypeName(typeArgument, declaration) };
+        params = {type: this.getMemberTypeName(typeArgument, declaration)};
+      } else if (typeArgument.symbol?.name === 'T') {
+        params[''] = {type: this.checker.typeToString(typeArgument)};
       } else {
         for (const member of typeArgs[position].symbol?.members || []) {
           const key = member[0];
@@ -182,7 +184,7 @@ export class Parser {
       for (let i = 1; i < expresion.arguments.length; i++) {
         const toExpandNode = expresion.arguments[i];
         console.log(path, toExpandNode.getText()); // print endpoint and function name
-        if (toExpandNode.getText() == "avatarController.getUserAvatar") {
+        if (toExpandNode.getText() == "tagController.getById") {
           console.log('test')
         }
 
