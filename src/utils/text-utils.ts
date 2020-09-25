@@ -1,4 +1,4 @@
-import { FieldType } from '../models/type';
+import {FieldType, SingleTypeKey} from '../models/type';
 import chalk from 'chalk';
 
 export class TextUtils {
@@ -37,33 +37,46 @@ export class TextUtils {
   }
 
   public static printFieldType(key: string, typeObject: FieldType | null, padding = '', isArray = false) {
-    if (!typeObject) {
-      // Is null, we don't know the type
-      const typeStr = `null${isArray ? '[]' : ''}`;
-      console.log(`${padding}${key}: ${chalk.yellow(typeStr)}`);
-    } else if (typeObject.type === 'object') {
-      // Object type
-      console.log(`${padding}${key}: ${chalk.yellow('{')}`);
-      Object.entries(typeObject.properties!).forEach(([k, v]) => {
-        TextUtils.printFieldType(k, v, `${padding}  `);
-      });
-      const endStr = `}${isArray ? '[]' : ''}`;
-      console.log(`${padding}${chalk.yellow(endStr)}`);
-    } else if (typeObject.type === 'enum') {
-      // Enum type
-      let type = Object.entries(typeObject.properties!)[0][1].type;
-      let items = ' in [ ' + Object.entries(typeObject.properties!).map(([k, v]) => '"' + v.value + '"' ).join(' | ') + ' ]'
-      console.log(`${padding}${key}: ${chalk.yellow(type)}${items}`);
+    // add optional
+    key = key + (typeObject?.isOptional == true ? '?': '');
+    let separator = key === '' ? '' : ': '
 
-      // const endStr = `}${isArray ? '[]' : ''}`;
-      // console.log(`${padding}${chalk.yellow(endStr)}`);
-    } else if (typeObject.type === 'array') {
-      // Array type
-      TextUtils.printFieldType(key, typeObject.items!, padding, true);
-    } else {
-      // Primitive type
-      const typeStr = `${typeObject.type}${typeObject.value ? ' (' + typeObject.value + ')' : ''}${isArray ? '[]' : ''}`;
-      console.log(`${padding}${key}: ${chalk.yellow(typeStr)}`);
+    switch (typeObject?.type) {
+      case 'object':
+        // Object type
+        console.log(`${padding}${key}: ${chalk.yellow('{')}`);
+        Object.entries(typeObject.properties!).forEach(([k, v]) => {
+          TextUtils.printFieldType(k, v, `${padding}  `);
+        });
+        const endStr = `}${isArray ? '[]' : ''}`;
+        console.log(`${padding}${chalk.yellow(endStr)}`);
+        break
+      case 'enum':
+        // Enum type
+        let type = Object.entries(typeObject.properties!)[0][1].type;
+        let items = ' in [ ' + Object.entries(typeObject.properties!).map(([k, v]) => '"' + v.value + '"' ).join(' | ') + ' ]'
+        console.log(`${padding}${key}: ${chalk.yellow(type)}${items}`);
+        // const endStr = `}${isArray ? '[]' : ''}`;
+        // console.log(`${padding}${chalk.yellow(endStr)}`);
+        break
+      case 'array':
+        // Array type
+        TextUtils.printFieldType(key, typeObject.items!, padding, true);
+        break;
+      case null:
+        {
+        // Is null, we don't know the type
+        const typeStr = `null${isArray ? '[]' : ''}`;
+        console.log(`${padding}${key}: ${chalk.yellow(typeStr)}`);
+        }
+        break
+      default:
+      {
+        // Primitive type
+        const typeStr = `${typeObject!.type}${typeObject!.value ? ' (' + typeObject!.value + ')' : ''}${isArray ? '[]' : ''}`;
+        console.log(`${padding}${key}${separator}${chalk.yellow(typeStr)}`);
+      }
+        break
     }
   }
 }

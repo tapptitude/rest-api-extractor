@@ -7,4 +7,5 @@ export interface FieldType {
   items?: FieldType | null;
   properties?: { [key: string]: FieldType };
   value?: any;
+  isOptional?: boolean
 }

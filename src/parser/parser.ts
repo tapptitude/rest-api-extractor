@@ -1,7 +1,7 @@
-import ts, {BindingElement, Type} from 'typescript';
+import ts, {BindingElement, ParameterDeclaration, Type} from 'typescript';
 import { tsquery } from '@phenomnomnominal/tsquery';
 import { Endpoint } from '../models/endpoint';
-import { FieldType, ObjectParameters } from '../models/type';
+import {FieldType, ObjectParameters} from '../models/type';
 
 const getDefaultEndpoint: () => Endpoint = () => ({
   path: '',
@@ -119,6 +119,39 @@ export class Parser {
     return params;
   }
 
+  getObjectParametersFromDeclarationType(declaration: ts.ParameterDeclaration, position: number, expandChiltdTypes: boolean = false) {
+    let params: ObjectParameters = {}
+
+    const type: ts.Type = this.checker.getTypeAtLocation(declaration);
+    const typeArgs = (type as any).typeArguments;
+    if (typeArgs && typeArgs.length > position) {
+      let typeArgument = typeArgs[position];
+      if (typeArgument.symbol?.name === 'Array') {
+        params = {type: this.getMemberTypeName(typeArgument, declaration) };
+      } else {
+        for (const member of typeArgs[position].symbol?.members || []) {
+          const key = member[0];
+          const symbol = member[1];
+          let isOptional = this.checker.isOptionalParameter(symbol.declarations[0]);
+          let fieldName = key; //+ (isOptional ? '?' : '');
+          const symbolType: any = this.checker.getTypeOfSymbolAtLocation(symbol, declaration);
+          if (expandChiltdTypes) {
+            params[fieldName] = this.getMemberTypeName(symbolType, declaration);
+          } else {
+            params[fieldName] = {type: this.checker.typeToString(symbolType)};
+          }
+          params[fieldName]!.isOptional = isOptional;
+        }
+      }
+      if (typeArgument.types && typeArgument.types.length > 1) {
+        let types = typeArgument.types.map((item: ts.Type) => this.checker.typeToString(item));
+        params[''] = {type: types.join(' | ')}
+      }
+    }
+
+    return params;
+  }
+
   private delint(sourceFile: ts.SourceFile, endpoint: Endpoint, found: Endpoint[]) {
     const nodes = tsquery(
       sourceFile,
@@ -149,7 +182,7 @@ export class Parser {
       for (let i = 1; i < expresion.arguments.length; i++) {
         const toExpandNode = expresion.arguments[i];
         console.log(path, toExpandNode.getText()); // print endpoint and function name
-        if (toExpandNode.getText() == "userController.updateCurrentUser") {
+        if (toExpandNode.getText() == "avatarController.getUserAvatar") {
           console.log('test')
         }
 
@@ -178,38 +211,12 @@ export class Parser {
 
           // parse request interface parameters
           const requestNode = declaration.parameters[0];
-          const requestName = (requestNode.name as ts.Identifier).escapedText;
-          const requestType: Type = this.checker.getTypeAtLocation(requestNode);
-          const typeArgs = (requestType as any).typeArguments;
-          if (typeArgs && typeArgs.length >= 3) {
-            const bodyType = typeArgs[2].symbol?.members;
-            if (bodyType) {
-              for (const member of bodyType) {
-                const key = member[0];
-                const symbol = member[1];
-                let isOptional = this.checker.isOptionalParameter(symbol.declarations[0]);
-                let fieldName = key + (isOptional ? '?' : '');
-                const symbolType: any = this.checker.getTypeOfSymbolAtLocation(symbol, requestNode);
-                bodyParams[fieldName] = this.getMemberTypeName(symbolType, requestNode);
-              }
-            }
-          }
+          let requestName = (requestNode.name as ts.Identifier).escapedText;
+          bodyParams = this.getObjectParametersFromDeclarationType(requestNode, 2, true)
 
           // parse response parameters
           const responseNode = declaration.parameters[1];
-          const responseType: Type = this.checker.getTypeAtLocation(responseNode);
-          const responseTypeArgs = (responseType as any).typeArguments;
-          if (responseTypeArgs && responseTypeArgs.length == 1) {
-            const response = responseTypeArgs[0].symbol?.members;
-              for (const member of response || []) {
-                const key = member[0];
-                const symbol = member[1];
-                let isOptional = this.checker.isOptionalParameter(symbol.declarations[0]);
-                let fieldName = key + (isOptional ? '?' : '');
-                const symbolType: any = this.checker.getTypeOfSymbolAtLocation(symbol, responseNode);
-                responseParams[fieldName] = {type: this.checker.typeToString(symbolType)};
-            }
-          }
+          responseParams = this.getObjectParametersFromDeclarationType(responseNode, 0)
 
           // const responseName = (declaration.parameters[1].name as ts.Identifier).escapedText;
           // const returnType = this.checker.getReturnTypeOfSignature(signature!);
