@@ -27,7 +27,13 @@ export class Parser {
     this.printer = ts.createPrinter();
   }
 
-  private getMemberTypeName(memberType: ts.Type, nodeLocation: ts.Node, expandChildTypes: boolean = false): FieldType | null {
+  private getMemberTypeName(memberType: ts.Type, nodeLocation: ts.Node, mapper: any, expandChildTypes: boolean = false): FieldType | null {
+
+    // is a generic type, so we can swap to target type
+    let mappedIndex = (mapper?.sources ?? []).map((item: any) => item.symbol).indexOf(memberType.symbol);
+    if (mappedIndex >= 0) {
+      memberType = mapper.targets[mappedIndex];
+    }
 
     // PRIMITIVE: memberType.intrinsicName
     if ((memberType as any).intrinsicName) {
@@ -45,16 +51,18 @@ export class Parser {
 
         return {
           type: 'array',
-          items: this.getMemberTypeName(elementType, nodeLocation, expandChildTypes)
+          items: this.getMemberTypeName(elementType, nodeLocation, mapper, expandChildTypes)
         };
       } else if (memberType.symbol.members) {
+
         // OBJECT: memberType.symbol.members
         memberType.symbol.members.forEach((value, key) => {
           let isOptional = this.checker.isOptionalParameter(value.declarations[0] as ts.ParameterDeclaration);
-          const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
+          let valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
+
           let typeName = this.checker.typeToString(valueType);
-          if (expandChildTypes) {
-            compoundType[key.toString()] = typeName == 'Date' ? { type:'Date' } : this.getMemberTypeName(valueType, nodeLocation, expandChildTypes);
+          if (expandChildTypes || valueType.symbol?.name == 'Array') {
+            compoundType[key.toString()] = typeName == 'Date' ? { type:'Date' } : this.getMemberTypeName(valueType, nodeLocation, mapper, expandChildTypes);
           } else {
             compoundType[key.toString()] = { type: typeName };
           }
@@ -65,7 +73,7 @@ export class Parser {
         memberType.symbol.exports.forEach((value, key) => {
           // let isOptional = this.checker.isOptionalParameter(value.declarations[0] as ts.ParameterDeclaration);
           const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
-          compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation, expandChildTypes);
+          compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation, mapper, expandChildTypes);
           // compoundType[key.toString()].isOptional = isOptional;
         });
 
@@ -109,7 +117,7 @@ export class Parser {
       for (const leftField of leftBinding.elements || []) {
         let fieldName = leftField.getText()
         // let typeSymbol = this.checker.typeToString(this.checker.getTypeAtLocation(leftField))
-        let typeSymbol = this.getMemberTypeName(this.checker.getTypeAtLocation(leftField), leftField);
+        let typeSymbol = this.getMemberTypeName(this.checker.getTypeAtLocation(leftField), leftField, null);
         params[fieldName] = {
           type: typeSymbol?.type || 'string',
           isOptional: true,
@@ -122,7 +130,7 @@ export class Parser {
       if (rightField) {
         const rightFieldName = rightField.getText()
         // const typeSymbol = this.checker.typeToString(this.checker.getTypeAtLocation(rightField))
-        let typeSymbol = this.getMemberTypeName(this.checker.getTypeAtLocation(rightField), rightField);
+        let typeSymbol = this.getMemberTypeName(this.checker.getTypeAtLocation(rightField), rightField, null);
         params[rightFieldName] = { type: typeSymbol?.type || 'string', ...typeSymbol };
       }
 
@@ -143,19 +151,11 @@ export class Parser {
 
     let typeArgument = typeArgs[position];
 
-    // is a generic type, so we can swap to target type
-    let mappedIndex = (mapper?.sources ?? []).map((item: any) => item.symbol).indexOf(typeArgument.symbol);
-    if (mappedIndex >= 0) {
-      typeArgument = mapper.targets[mappedIndex];
-      params = { ...this.getMemberTypeName(typeArgument, declaration, expandChildTypes)?.properties };
-      return params;
-    }
-
     if (typeArgument.isUnionOrIntersection()) {
       let types = typeArgument.types.map((item: ts.Type) => this.checker.typeToString(item));
       params[''] = {type: types.join(' | ')}
     } else {
-      params = { ...this.getMemberTypeName(typeArgument, declaration, expandChildTypes)?.properties};
+      params = { ...this.getMemberTypeName(typeArgument, declaration, mapper, expandChildTypes)?.properties};
     }
 
     return params;
@@ -191,7 +191,7 @@ export class Parser {
       for (let i = 1; i < expresion.arguments.length; i++) {
         const toExpandNode = expresion.arguments[i];
         console.log(path, toExpandNode.getText()); // print endpoint and function name
-        if (toExpandNode.getText() == "storyController.update") {
+        if (toExpandNode.getText() == "notificationController.list") {
           console.log('test')
         }
 
@@ -232,7 +232,7 @@ export class Parser {
 
           // parse response parameters
           const responseNode = declaration.parameters[1];
-          responseParams = this.getObjectParametersFromDeclarationType(responseNode, 0, mapper)
+          responseParams = this.getObjectParametersFromDeclarationType(responseNode, 0, mapper, true)
 
           // const responseName = (declaration.parameters[1].name as ts.Identifier).escapedText;
           // const returnType = this.checker.getReturnTypeOfSignature(signature!);
