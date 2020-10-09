@@ -27,7 +27,8 @@ export class Parser {
     this.printer = ts.createPrinter();
   }
 
-  private getMemberTypeName(memberType: ts.Type, nodeLocation: ts.Node): FieldType | null {
+  private getMemberTypeName(memberType: ts.Type, nodeLocation: ts.Node, expandChildTypes: boolean = false): FieldType | null {
+
     // PRIMITIVE: memberType.intrinsicName
     if ((memberType as any).intrinsicName) {
       return {
@@ -43,21 +44,30 @@ export class Parser {
         let elementType = (<ts.TypeReference>memberType).typeArguments![0];
         return {
           type: 'array',
-          items: this.getMemberTypeName(elementType, nodeLocation),
+          items: this.getMemberTypeName(elementType, nodeLocation, expandChildTypes)
         };
-      } else if (memberType.symbol.exports) {
-        // ENUM: memberType.symbol.exports
-        memberType.symbol.exports.forEach((value, key) => {
-          const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
-          compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation);
-        });
-        return { type: 'enum', properties: compoundType };
       } else if (memberType.symbol.members) {
         // OBJECT: memberType.symbol.members
         memberType.symbol.members.forEach((value, key) => {
+          let isOptional = this.checker.isOptionalParameter(value.declarations[0] as ts.ParameterDeclaration);
           const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
-          compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation);
+          let typeName = this.checker.typeToString(valueType);
+          if (expandChildTypes) {
+            compoundType[key.toString()] = typeName == 'Date' ? { type:'Date' } : this.getMemberTypeName(valueType, nodeLocation, expandChildTypes);
+          } else {
+            compoundType[key.toString()] = { type: typeName };
+          }
+          compoundType[key.toString()].isOptional = isOptional;
         });
+      } else if (memberType.symbol.exports) {
+        // ENUM: memberType.symbol.exports
+        memberType.symbol.exports.forEach((value, key) => {
+          // let isOptional = this.checker.isOptionalParameter(value.declarations[0] as ts.ParameterDeclaration);
+          const valueType = this.checker.getTypeOfSymbolAtLocation(value, nodeLocation);
+          compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation, expandChildTypes);
+          // compoundType[key.toString()].isOptional = isOptional;
+        });
+        return { type: 'enum', properties: compoundType };
       } else if ((memberType.symbol.valueDeclaration as any)?.initializer) {
         // ENUM VALUE
         const initializerToken = (memberType.symbol.valueDeclaration as any)?.initializer;
@@ -119,36 +129,30 @@ export class Parser {
     return params;
   }
 
-  getObjectParametersFromDeclarationType(declaration: ts.ParameterDeclaration, position: number, expandChiltdTypes: boolean = false) {
+  getObjectParametersFromDeclarationType(declaration: ts.ParameterDeclaration, position: number, mapper: any, expandChildTypes: boolean = false) {
     let params: ObjectParameters = {}
 
     const type: ts.Type = this.checker.getTypeAtLocation(declaration);
-    const typeArgs = (type as any).typeArguments;
-    if (typeArgs && typeArgs.length > position) {
-      let typeArgument = typeArgs[position];
-      if (typeArgument.symbol?.name === 'Array') {
-        params = {type: this.getMemberTypeName(typeArgument, declaration)};
-      } else if (typeArgument.symbol?.name === 'T') {
-        params[''] = {type: this.checker.typeToString(typeArgument)};
-      } else {
-        for (const member of typeArgs[position].symbol?.members || []) {
-          const key = member[0];
-          const symbol = member[1];
-          let isOptional = this.checker.isOptionalParameter(symbol.declarations[0]);
-          let fieldName = key; //+ (isOptional ? '?' : '');
-          const symbolType: any = this.checker.getTypeOfSymbolAtLocation(symbol, declaration);
-          if (expandChiltdTypes) {
-            params[fieldName] = this.getMemberTypeName(symbolType, declaration);
-          } else {
-            params[fieldName] = {type: this.checker.typeToString(symbolType)};
-          }
-          params[fieldName]!.isOptional = isOptional;
-        }
-      }
-      if (typeArgument.types && typeArgument.types.length > 1) {
-        let types = typeArgument.types.map((item: ts.Type) => this.checker.typeToString(item));
-        params[''] = {type: types.join(' | ')}
-      }
+    const typeArgs = this.checker.getTypeArguments(type as ts.TypeReference)
+    if (typeArgs.length <= position) {
+      return params
+    }
+
+    let typeArgument = typeArgs[position];
+
+    // is a generic type, so we can swap to target type
+    let mappedIndex = (mapper?.sources ?? []).map((item: any) => item.symbol).indexOf(typeArgument.symbol);
+    if (mappedIndex >= 0) {
+      typeArgument = mapper.targets[mappedIndex];
+      params = { ...this.getMemberTypeName(typeArgument, declaration, expandChildTypes)?.properties };
+      return params;
+    }
+
+    if (typeArgument.isUnionOrIntersection()) {
+      let types = typeArgument.types.map((item: ts.Type) => this.checker.typeToString(item));
+      params[''] = {type: types.join(' | ')}
+    } else {
+      params = { ...this.getMemberTypeName(typeArgument, declaration, expandChildTypes)?.properties};
     }
 
     return params;
@@ -184,7 +188,7 @@ export class Parser {
       for (let i = 1; i < expresion.arguments.length; i++) {
         const toExpandNode = expresion.arguments[i];
         console.log(path, toExpandNode.getText()); // print endpoint and function name
-        if (toExpandNode.getText() == "tagController.getById") {
+        if (toExpandNode.getText() == "uploadController.requestPostData") {
           console.log('test')
         }
 
@@ -193,6 +197,13 @@ export class Parser {
           const symbolType = this.checker.getTypeOfSymbolAtLocation(symbol, expresion);
           const declaration = symbolType.symbol.declarations[0]! as ts.SignatureDeclaration;
           const signature = this.checker.getSignatureFromDeclaration(declaration);
+
+          // handle Parent / child classes with generics, ex T --> Model
+          let mapper = (this.checker.getBaseTypeOfLiteralType(symbolType) as any)?.mapper;
+          if (mapper?.sources?.length > 0 && mapper?.targets?.length > 0) {
+            // console.log(mapper.sources[0].symbol.escapedName, '->', mapper.targets[0].symbol.escapedName);
+          }
+
 
           // Get JsDoc tags if they exist
           const jsdocTags = signature?.getJsDocTags();
@@ -214,11 +225,11 @@ export class Parser {
           // parse request interface parameters
           const requestNode = declaration.parameters[0];
           let requestName = (requestNode.name as ts.Identifier).escapedText;
-          bodyParams = this.getObjectParametersFromDeclarationType(requestNode, 2, true)
+          bodyParams = this.getObjectParametersFromDeclarationType(requestNode, 2, mapper, true)
 
           // parse response parameters
           const responseNode = declaration.parameters[1];
-          responseParams = this.getObjectParametersFromDeclarationType(responseNode, 0)
+          responseParams = this.getObjectParametersFromDeclarationType(responseNode, 0, mapper)
 
           // const responseName = (declaration.parameters[1].name as ts.Identifier).escapedText;
           // const returnType = this.checker.getReturnTypeOfSignature(signature!);
