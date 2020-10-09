@@ -32,7 +32,7 @@ export class Parser {
     // PRIMITIVE: memberType.intrinsicName
     if ((memberType as any).intrinsicName) {
       return {
-        type: (memberType as any).intrinsicName,
+        type: (memberType as any).intrinsicName
       };
     }
 
@@ -42,6 +42,7 @@ export class Parser {
       if (memberType.symbol.name == 'Array' && (<ts.TypeReference>memberType).typeArguments) {
         // ARRAY
         let elementType = (<ts.TypeReference>memberType).typeArguments![0];
+
         return {
           type: 'array',
           items: this.getMemberTypeName(elementType, nodeLocation, expandChildTypes)
@@ -67,6 +68,7 @@ export class Parser {
           compoundType[key.toString()] = this.getMemberTypeName(valueType, nodeLocation, expandChildTypes);
           // compoundType[key.toString()].isOptional = isOptional;
         });
+
         return { type: 'enum', properties: compoundType };
       } else if ((memberType.symbol.valueDeclaration as any)?.initializer) {
         // ENUM VALUE
@@ -80,7 +82,7 @@ export class Parser {
       }
 
       // TODO: 1) Treat case where type is something like "a" | "b" | "c"
-      // TODO: 2) Treat case where type is optional (user?: User)
+      // TODO: 2) Treat case where type is optional Partial<User>
 
       return { type: 'object', properties: compoundType };
     }
@@ -110,6 +112,7 @@ export class Parser {
         let typeSymbol = this.getMemberTypeName(this.checker.getTypeAtLocation(leftField), leftField);
         params[fieldName] = {
           type: typeSymbol?.type || 'string',
+          isOptional: true,
           ...typeSymbol
         };
       }
@@ -188,7 +191,7 @@ export class Parser {
       for (let i = 1; i < expresion.arguments.length; i++) {
         const toExpandNode = expresion.arguments[i];
         console.log(path, toExpandNode.getText()); // print endpoint and function name
-        if (toExpandNode.getText() == "uploadController.requestPostData") {
+        if (toExpandNode.getText() == "storyController.update") {
           console.log('test')
         }
 
